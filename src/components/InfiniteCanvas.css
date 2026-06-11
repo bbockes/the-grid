@@ -1,0 +1,156 @@
+.infinite-canvas-app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #f5f5f7;
+}
+
+.viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.viewport--default {
+  cursor: default;
+}
+
+.viewport--grab {
+  cursor: grab;
+}
+
+.viewport--grabbing {
+  cursor: grabbing;
+}
+
+.grid-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.hud {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #444;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.hud-divider {
+  width: 1px;
+  height: 12px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.hud-button {
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #444;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
+  transition: background 0.15s;
+}
+
+.hud-button:hover {
+  background: #fff;
+}
+
+.setup-banner {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 20;
+  max-width: min(420px, calc(100vw - 360px));
+  padding: 14px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.setup-banner--warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.setup-banner__title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.setup-banner__copy {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7f1d1d;
+}
+
+.setup-banner--warning .setup-banner__copy {
+  color: #92400e;
+}
+
+.setup-banner__copy code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.setup-banner__button {
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  color: #991b1b;
+  cursor: pointer;
+}
+
+.setup-banner__button:hover {
+  background: #fff5f5;
+}
+
+.hint {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #666;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
+}
