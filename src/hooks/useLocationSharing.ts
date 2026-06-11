@@ -5,11 +5,11 @@ import {
   snapToCell,
   type WorldPoint,
 } from '../lib/grid'
+import { parseSocialLinks } from '../lib/profile'
 import { supabase } from '../lib/supabase'
 import type { UserBox } from '../types/database'
 
 const POLL_INTERVAL_MS = 3_000
-const STALE_MS = 60_000
 
 function isSetupError(message: string) {
   return (
@@ -29,9 +29,20 @@ export function useLocationSharing(userId: string | undefined) {
 
   const loggedErrorRef = useRef<string | null>(null)
   const sharingDisabledRef = useRef(false)
-  const profilesRef = useRef<Map<string, string>>(new Map())
+  const profilesRef = useRef<
+    Map<
+      string,
+      {
+        display_name: string
+        avatar_url: string | null
+        description: string | null
+        social_links: string[]
+      }
+    >
+  >(new Map())
   const lastCellKeyRef = useRef<string | null>(null)
   const watchIdRef = useRef<number | null>(null)
+  const myCellRef = useRef<WorldPoint | null>(null)
 
   const reportError = useCallback((message: string) => {
     setSyncError(message)
@@ -51,11 +62,11 @@ export function useLocationSharing(userId: string | undefined) {
   }, [])
 
   const upsertCell = useCallback(
-    async (cell: WorldPoint) => {
+    async (cell: WorldPoint, force = false) => {
       if (!supabase || !userId || sharingDisabledRef.current) return
 
       const key = cellKey(cell.x, cell.y)
-      if (lastCellKeyRef.current === key) return
+      if (!force && lastCellKeyRef.current === key) return
       lastCellKeyRef.current = key
 
       const { error } = await supabase.from('user_locations').upsert(
@@ -63,6 +74,7 @@ export function useLocationSharing(userId: string | undefined) {
           user_id: userId,
           world_x: cell.x,
           world_y: cell.y,
+          is_active: true,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id' },
@@ -74,77 +86,72 @@ export function useLocationSharing(userId: string | undefined) {
       }
 
       clearError()
+      myCellRef.current = cell
       setMyCell(cell)
     },
     [clearError, reportError, userId],
   )
 
-  const removeOwnLocation = useCallback(async () => {
-    if (!supabase || !userId) return
-
-    const { error } = await supabase
-      .from('user_locations')
-      .delete()
-      .eq('user_id', userId)
-
-    if (error) {
-      reportError(`delete failed: ${error.message}`)
-    } else {
-      lastCellKeyRef.current = null
-      setMyCell(null)
-    }
-  }, [reportError, userId])
-
   const attachProfiles = useCallback(
     async (rows: UserBox[]): Promise<UserBox[]> => {
       if (!supabase || rows.length === 0) return rows
 
-      const missingIds = [
-        ...new Set(
-          rows
-            .map((row) => row.user_id)
-            .filter((id) => !profilesRef.current.has(id)),
-        ),
-      ]
+      const userIds = [...new Set(rows.map((row) => row.user_id))]
 
-      if (missingIds.length > 0) {
+      if (userIds.length > 0) {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, display_name')
-          .in('id', missingIds)
+          .select('id, display_name, avatar_url, description, social_links')
+          .in('id', userIds)
 
         if (error) {
           reportError(`profile fetch failed: ${error.message}`)
         }
 
         for (const profile of data ?? []) {
-          profilesRef.current.set(profile.id, profile.display_name)
+          profilesRef.current.set(profile.id, {
+            display_name: profile.display_name,
+            avatar_url: profile.avatar_url,
+            description: profile.description ?? null,
+            social_links: parseSocialLinks(profile.social_links),
+          })
         }
       }
 
-      return rows.map((row) => ({
-        ...row,
-        display_name:
-          profilesRef.current.get(row.user_id) ?? row.display_name ?? 'User',
-      }))
+      return rows.map((row) => {
+        const profile = profilesRef.current.get(row.user_id)
+        return {
+          ...row,
+          display_name: profile?.display_name ?? row.display_name ?? 'User',
+          avatar_url: profile?.avatar_url ?? row.avatar_url ?? null,
+          description: profile?.description ?? row.description ?? null,
+          social_links: profile?.social_links ?? row.social_links ?? [],
+        }
+      })
     },
     [reportError],
   )
 
   const applyLocations = useCallback(
-    async (locations: { user_id: string; world_x: number; world_y: number; updated_at: string }[]) => {
-      const cutoff = Date.now() - STALE_MS
-      const fresh = locations.filter((row) => {
-        const updated = new Date(row.updated_at).getTime()
-        return Number.isFinite(updated) && updated >= cutoff
-      })
-
-      const boxes: UserBox[] = fresh.map((row) => ({
+    async (
+      locations: {
+        user_id: string
+        world_x: number
+        world_y: number
+        is_active?: boolean
+        updated_at: string
+      }[],
+    ) => {
+      const boxes: UserBox[] = locations.map((row) => ({
         ...row,
         world_x: snapToCell(Number(row.world_x), Number(row.world_y)).x,
         world_y: snapToCell(Number(row.world_x), Number(row.world_y)).y,
+        is_active: row.is_active ?? true,
         display_name: 'User',
-        isSelf: row.user_id === userId,
+        avatar_url: null,
+        description: null,
+        social_links: [],
+        isSelf: row.user_id === userId && (row.is_active ?? true),
       }))
 
       const withNames = await attachProfiles(boxes)
@@ -152,7 +159,9 @@ export function useLocationSharing(userId: string | undefined) {
 
       const mine = withNames.find((box) => box.isSelf)
       if (mine) {
-        setMyCell({ x: mine.world_x, y: mine.world_y })
+        const cell = { x: mine.world_x, y: mine.world_y }
+        myCellRef.current = cell
+        setMyCell(cell)
         lastCellKeyRef.current = cellKey(mine.world_x, mine.world_y)
       }
     },
@@ -160,12 +169,12 @@ export function useLocationSharing(userId: string | undefined) {
   )
 
   const syncAll = useCallback(async () => {
-    if (!supabase || !userId || sharingDisabledRef.current) return
+    if (!supabase || sharingDisabledRef.current) return
 
     const { data, error } = await supabase.from('user_locations').select('*')
 
     if (error) {
-      reportError(`sync failed: ${error.message}`)
+      if (userId) reportError(`sync failed: ${error.message}`)
       return
     }
 
@@ -207,13 +216,11 @@ export function useLocationSharing(userId: string | undefined) {
 
   useEffect(() => {
     if (!userId) {
-      setUserBoxes([])
       setMyCell(null)
-      setSyncError(null)
-      setGeoStatus('idle')
-      sharingDisabledRef.current = false
-      loggedErrorRef.current = null
+      myCellRef.current = null
       lastCellKeyRef.current = null
+      setGeoStatus('idle')
+      void syncAll()
       return
     }
 
@@ -240,25 +247,29 @@ export function useLocationSharing(userId: string | undefined) {
       { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 },
     )
 
-    const onPageHide = () => {
-      void removeOwnLocation()
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      void syncAll()
+      if (myCellRef.current) {
+        void upsertCell(myCellRef.current, true)
+      }
     }
-    window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisible)
 
     return () => {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current)
         watchIdRef.current = null
       }
-      window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [checkConnection, removeOwnLocation, shareFromGeolocation, userId])
+  }, [checkConnection, shareFromGeolocation, syncAll, upsertCell, userId])
 
   useEffect(() => {
-    if (!supabase || !userId) return
+    if (!supabase) return
 
     const channel = supabase
-      .channel(`user-boxes:${userId}`)
+      .channel(`user-boxes:${userId ?? 'anon'}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'user_locations' },
@@ -271,6 +282,8 @@ export function useLocationSharing(userId: string | undefined) {
     const pollTimer = setInterval(() => {
       void syncAll()
     }, POLL_INTERVAL_MS)
+
+    void syncAll()
 
     const client = supabase
 
@@ -289,7 +302,6 @@ export function useLocationSharing(userId: string | undefined) {
     myCell,
     geoStatus,
     shareFromWorldPoint,
-    removeOwnLocation,
     retryConnection: checkConnection,
   }
 }

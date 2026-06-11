@@ -8,8 +8,10 @@ import {
   type ReactNode,
 } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
+import { uploadAvatar } from '../lib/avatarUpload'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
-import type { Profile } from '../types/database'
+import type { Profile, ProfileUpdates } from '../types/database'
+import { normalizeSocialLinks, parseSocialLinks } from '../lib/profile'
 
 type AuthContextValue = {
   configured: boolean
@@ -26,6 +28,11 @@ type AuthContextValue = {
   signInWithMagicLink: (email: string) => Promise<{ error: string | null }>
   signInWithGoogle: () => Promise<{ error: string | null }>
   signOut: () => Promise<void>
+  updateProfile: (updates: ProfileUpdates) => Promise<{ error: string | null }>
+  uploadProfilePhoto: (file: File) => Promise<{
+    url: string | null
+    error: string | null
+  }>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -40,7 +47,11 @@ async function fetchProfile(userId: string): Promise<Profile | null> {
     .maybeSingle()
 
   if (error || !data) return null
-  return data
+  return {
+    ...data,
+    description: data.description ?? null,
+    social_links: parseSocialLinks(data.social_links),
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -134,6 +145,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null }
   }, [])
 
+  const uploadProfilePhoto = useCallback(
+    async (file: File) => {
+      if (!session?.user) {
+        return { url: null, error: 'You must be signed in' }
+      }
+      return uploadAvatar(session.user.id, file)
+    },
+    [session?.user],
+  )
+
+  const updateProfile = useCallback(
+    async (updates: ProfileUpdates) => {
+      if (!supabase || !session?.user) {
+        return { error: 'Supabase is not configured' }
+      }
+
+      const { error } = await supabase.from('profiles').upsert(
+        {
+          id: session.user.id,
+          display_name: updates.display_name.trim() || 'User',
+          avatar_url: updates.avatar_url?.trim() || null,
+          description: updates.description?.trim() || null,
+          social_links: normalizeSocialLinks(updates.social_links),
+        },
+        { onConflict: 'id' },
+      )
+
+      if (error) {
+        return { error: error.message }
+      }
+
+      await loadProfile(session.user.id)
+      return { error: null }
+    },
+    [loadProfile, session?.user],
+  )
+
   const signOut = useCallback(async () => {
     if (!supabase) return
 
@@ -144,7 +192,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (currentUser) {
       await supabase
         .from('user_locations')
-        .delete()
+        .update({
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        })
         .eq('user_id', currentUser.id)
     }
 
@@ -164,6 +215,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithMagicLink,
       signInWithGoogle,
       signOut,
+      updateProfile,
+      uploadProfilePhoto,
     }),
     [
       loading,
@@ -174,6 +227,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithMagicLink,
       signInWithGoogle,
       signOut,
+      updateProfile,
+      uploadProfilePhoto,
     ],
   )
 

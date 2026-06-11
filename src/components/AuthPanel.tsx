@@ -1,6 +1,23 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
+import EditProfileModal from './EditProfileModal'
 import './AuthPanel.css'
+
+function getAvatarUrl(
+  profile: { avatar_url: string | null } | null,
+  user: { user_metadata?: Record<string, unknown> },
+) {
+  const fromProfile = profile?.avatar_url
+  if (typeof fromProfile === 'string' && fromProfile) return fromProfile
+
+  const meta = user.user_metadata ?? {}
+  const candidates = [meta.avatar_url, meta.picture, meta.avatarUrl]
+  for (const value of candidates) {
+    if (typeof value === 'string' && value) return value
+  }
+
+  return null
+}
 
 type Mode = 'signin' | 'signup' | 'magic'
 
@@ -15,6 +32,8 @@ export default function AuthPanel() {
     signInWithMagicLink,
     signInWithGoogle,
     signOut,
+    updateProfile,
+    uploadProfilePhoto,
   } = useAuth()
 
   const [mode, setMode] = useState<Mode>('signin')
@@ -24,6 +43,9 @@ export default function AuthPanel() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   if (loading) {
     return (
@@ -47,26 +69,69 @@ export default function AuthPanel() {
   }
 
   if (user) {
+    const displayName = profile?.display_name ?? user.email ?? 'User'
+    const avatarUrl = getAvatarUrl(profile, user)
+    const initial = displayName.charAt(0).toUpperCase()
+
     return (
-      <div className="auth-panel auth-panel--signed-in">
-        <div className="auth-panel__user">
-          <span className="auth-panel__avatar">
-            {(profile?.display_name ?? user.email ?? '?').charAt(0).toUpperCase()}
-          </span>
-          <div>
-            <p className="auth-panel__name">
-              {profile?.display_name ?? user.email}
-            </p>
-            <p className="auth-panel__meta">On the grid</p>
-          </div>
-        </div>
+      <div className="auth-avatar-menu" ref={menuRef}>
         <button
           type="button"
-          className="auth-panel__button auth-panel__button--ghost"
-          onClick={() => void signOut()}
+          className="auth-avatar"
+          aria-label={`${displayName} account menu`}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+          onBlur={(e) => {
+            if (!menuRef.current?.contains(e.relatedTarget as Node)) {
+              setMenuOpen(false)
+            }
+          }}
         >
-          Sign out
+          {avatarUrl ? (
+            <img
+              className="auth-avatar__image"
+              src={avatarUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <span className="auth-avatar__initial">{initial}</span>
+          )}
         </button>
+
+        {menuOpen && (
+          <div className="auth-avatar-menu__dropdown">
+            <p className="auth-avatar-menu__name">{displayName}</p>
+            <button
+              type="button"
+              className="auth-avatar-menu__action"
+              onClick={() => {
+                setMenuOpen(false)
+                setEditOpen(true)
+              }}
+            >
+              Edit profile
+            </button>
+            <button
+              type="button"
+              className="auth-avatar-menu__signout"
+              onClick={() => void signOut()}
+            >
+              Sign out
+            </button>
+          </div>
+        )}
+
+        {editOpen && (
+          <EditProfileModal
+            profile={profile}
+            fallbackName={displayName}
+            fallbackAvatarUrl={avatarUrl}
+            onClose={() => setEditOpen(false)}
+            onSave={updateProfile}
+            onUploadPhoto={uploadProfilePhoto}
+          />
+        )}
       </div>
     )
   }

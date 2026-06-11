@@ -12,11 +12,98 @@
   backdrop-filter: blur(10px);
 }
 
-.auth-panel--setup,
-.auth-panel--signed-in {
+.auth-panel--setup {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.auth-avatar-menu {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 20;
+}
+
+.auth-avatar {
+  display: block;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  background: #6366f1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  overflow: hidden;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.auth-avatar:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+  transform: scale(1.04);
+}
+
+.auth-avatar__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.auth-avatar__initial {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.auth-avatar-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.auth-avatar-menu__name {
+  margin: 0 0 8px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auth-avatar-menu__action,
+.auth-avatar-menu__signout {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  color: #444;
+  cursor: pointer;
+}
+
+.auth-avatar-menu__action {
+  margin-bottom: 6px;
+}
+
+.auth-avatar-menu__action:hover,
+.auth-avatar-menu__signout:hover {
+  background: #f9fafb;
 }
 
 .auth-panel__title {
@@ -43,37 +130,6 @@
 
 .auth-panel__status {
   font-size: 13px;
-  color: #666;
-}
-
-.auth-panel__user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.auth-panel__avatar {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #6366f1;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.auth-panel__name {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #111;
-}
-
-.auth-panel__meta {
-  margin: 2px 0 0;
-  font-size: 12px;
   color: #666;
 }
 

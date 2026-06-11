@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import AuthPanel from './AuthPanel'
 import UserBoxes from './UserBoxes'
+import UserProfileModal from './UserProfileModal'
 import { useAuth } from '../context/AuthContext'
 import { useLocationSharing } from '../hooks/useLocationSharing'
 import {
@@ -124,6 +125,17 @@ export default function InfiniteCanvas() {
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 0.15 })
   const [isPanning, setIsPanning] = useState(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
+  const [viewedUserId, setViewedUserId] = useState<string | null>(null)
+
+  const viewedProfile = viewedUserId
+    ? (userBoxes.find((box) => box.user_id === viewedUserId) ?? null)
+    : null
+
+  useEffect(() => {
+    if (viewedUserId && !userBoxes.some((box) => box.user_id === viewedUserId)) {
+      setViewedUserId(null)
+    }
+  }, [userBoxes, viewedUserId])
 
   const updateCamera = useCallback((next: Camera) => {
     cameraRef.current = next
@@ -203,6 +215,15 @@ export default function InfiniteCanvas() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' && !e.repeat) {
+        const target = e.target
+        if (
+          target instanceof HTMLElement &&
+          (target.isContentEditable ||
+            target.closest('input, textarea, select, [contenteditable="true"]'))
+        ) {
+          return
+        }
+
         e.preventDefault()
         spaceHeldRef.current = true
         setSpaceHeld(true)
@@ -253,6 +274,16 @@ export default function InfiniteCanvas() {
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
+      const target = e.target
+      if (
+        target instanceof Element &&
+        target.closest(
+          '.edit-profile-overlay, .user-profile-overlay, .auth-panel',
+        )
+      ) {
+        return
+      }
+
       e.preventDefault()
 
       if (e.ctrlKey || e.metaKey) {
@@ -348,8 +379,10 @@ export default function InfiniteCanvas() {
       : 'default'
 
   const myLatLng = myCell ? worldToLatLng(myCell) : null
+  const activeBoxes = userBoxes.filter((box) => box.is_active)
+  const ghostBoxes = userBoxes.filter((box) => !box.is_active)
   const nearbyCount = myCell
-    ? userBoxes.filter((box) => {
+    ? activeBoxes.filter((box) => {
         const dx = Math.abs(box.world_x - myCell.x) / GRID_SIZE
         const dy = Math.abs(box.world_y - myCell.y) / GRID_SIZE
         return dx <= NEARBY_RADIUS_CELLS && dy <= NEARBY_RADIUS_CELLS
@@ -369,7 +402,18 @@ export default function InfiniteCanvas() {
       >
         <canvas ref={gridCanvasRef} className="grid-canvas" aria-hidden />
 
-        <UserBoxes boxes={userBoxes} camera={camera} />
+        <UserBoxes
+          boxes={userBoxes}
+          camera={camera}
+          onBoxClick={(box) => setViewedUserId(box.user_id)}
+        />
+
+        {viewedProfile && (
+          <UserProfileModal
+            box={viewedProfile}
+            onClose={() => setViewedUserId(null)}
+          />
+        )}
 
         <AuthPanel />
 
@@ -421,7 +465,9 @@ export default function InfiniteCanvas() {
               <>
                 <span className="hud-divider" />
                 <span>
-                  {userBoxes.length} on grid · {nearbyCount} nearby
+                  {activeBoxes.length} active
+                  {ghostBoxes.length > 0 && ` · ${ghostBoxes.length} away`}
+                  {myCell && ` · ${nearbyCount} nearby`}
                 </span>
               </>
             )}

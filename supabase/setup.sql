@@ -7,6 +7,8 @@ create table if not exists public.profiles (
   id uuid references auth.users on delete cascade primary key,
   display_name text not null,
   avatar_url text,
+  description text,
+  social_links jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -14,6 +16,7 @@ create table if not exists public.user_locations (
   user_id uuid references auth.users on delete cascade primary key,
   world_x double precision not null,
   world_y double precision not null,
+  is_active boolean not null default true,
   updated_at timestamptz not null default now()
 );
 
@@ -98,3 +101,40 @@ select
   )
 from auth.users
 on conflict (id) do nothing;
+
+-- Profile photo uploads (Storage)
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "Avatar images are publicly accessible" on storage.objects;
+create policy "Avatar images are publicly accessible"
+  on storage.objects for select
+  using (bucket_id = 'avatars');
+
+drop policy if exists "Users can upload own avatar" on storage.objects;
+create policy "Users can upload own avatar"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Users can update own avatar" on storage.objects;
+create policy "Users can update own avatar"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Users can delete own avatar" on storage.objects;
+create policy "Users can delete own avatar"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
