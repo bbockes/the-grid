@@ -1,5 +1,11 @@
 import { useMemo, type CSSProperties } from 'react'
-import { GRID_SIZE, MIN_CELL_SCREEN_PX, colorFromId, pickVisibleBoxesPerCell } from '../lib/grid'
+import {
+  displayCellSizeForZoom,
+  displayPosition,
+  MIN_CELL_SCREEN_PX,
+  colorFromId,
+  pickVisibleBoxesPerCell,
+} from '../lib/grid'
 import type { UserBox } from '../types/database'
 import './UserBoxes.css'
 
@@ -12,7 +18,12 @@ type UserBoxesProps = {
 }
 
 export default function UserBoxes({ boxes, camera, onBoxClick }: UserBoxesProps) {
-  const visibleBoxes = useMemo(() => pickVisibleBoxesPerCell(boxes), [boxes])
+  const cellSize = displayCellSizeForZoom(camera.zoom)
+
+  const visibleBoxes = useMemo(
+    () => pickVisibleBoxesPerCell(boxes, () => cellSize),
+    [boxes, cellSize],
+  )
 
   if (visibleBoxes.length === 0) return null
 
@@ -20,12 +31,16 @@ export default function UserBoxes({ boxes, camera, onBoxClick }: UserBoxesProps)
     <div className="user-boxes">
       {visibleBoxes.map((box) => {
         const color = colorFromId(box.user_id)
-        const sx = camera.x + box.world_x * camera.zoom
-        const sy = camera.y + box.world_y * camera.zoom
-        const size = Math.max(MIN_CELL_SCREEN_PX, GRID_SIZE * camera.zoom)
+        const display = displayPosition(
+          { x: box.world_x, y: box.world_y },
+          cellSize,
+        )
+        const boxScreenSize = Math.max(MIN_CELL_SCREEN_PX, cellSize * camera.zoom)
+        const sx = camera.x + display.x * camera.zoom
+        const sy = camera.y + display.y * camera.zoom
         const isGhost = !box.is_active
         const initial = box.display_name.charAt(0).toUpperCase()
-        const showLabel = size >= 36
+        const showLabel = boxScreenSize >= 36
 
         return (
           <button
@@ -41,10 +56,10 @@ export default function UserBoxes({ boxes, camera, onBoxClick }: UserBoxesProps)
             style={
               {
                 transform: `translate(${sx}px, ${sy}px)`,
-                width: size,
-                height: size,
+                width: boxScreenSize,
+                height: boxScreenSize,
                 '--box-color': color,
-                '--box-size': `${size}px`,
+                '--box-size': `${boxScreenSize}px`,
               } as CSSProperties
             }
             aria-label={`View ${box.display_name}'s profile`}

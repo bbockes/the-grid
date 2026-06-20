@@ -7,12 +7,15 @@ import { useAuth } from '../context/AuthContext'
 import { useLocationSharing } from '../hooks/useLocationSharing'
 import { useMessaging } from '../hooks/useMessaging'
 import {
-  GRID_SIZE,
+  boundsFromPoints,
+  cameraToFitBounds,
+  cellCenter,
+  displayCellSizeForZoom,
+  gridLineCellSize,
   MAX_ZOOM,
   MIN_ZOOM,
-  boundsFromCells,
-  cameraToFitBounds,
   nearbyBounds,
+  snapToCellSize,
   worldToLatLng,
   type WorldPoint,
 } from '../lib/grid'
@@ -34,7 +37,8 @@ function drawGrid(
   camera: Camera,
 ) {
   const { x: panX, y: panY, zoom } = camera
-  const gridScreen = GRID_SIZE * zoom
+  const cellSize = gridLineCellSize(zoom)
+  const gridScreen = cellSize * zoom
 
   ctx.clearRect(0, 0, width, height)
 
@@ -43,13 +47,13 @@ function drawGrid(
   const worldRight = worldLeft + width / zoom
   const worldBottom = worldTop + height / zoom
 
-  const firstX = Math.floor(worldLeft / GRID_SIZE) * GRID_SIZE
-  const firstY = Math.floor(worldTop / GRID_SIZE) * GRID_SIZE
+  const firstX = Math.floor(worldLeft / cellSize) * cellSize
+  const firstY = Math.floor(worldTop / cellSize) * cellSize
 
   ctx.lineWidth = 1
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)'
 
-  for (let wx = firstX; wx <= worldRight; wx += GRID_SIZE) {
+  for (let wx = firstX; wx <= worldRight; wx += cellSize) {
     const sx = panX + wx * zoom
     const pixelX = Math.round(sx) + 0.5
     ctx.beginPath()
@@ -58,7 +62,7 @@ function drawGrid(
     ctx.stroke()
   }
 
-  for (let wy = firstY; wy <= worldBottom; wy += GRID_SIZE) {
+  for (let wy = firstY; wy <= worldBottom; wy += cellSize) {
     const sy = panY + wy * zoom
     const pixelY = Math.round(sy) + 0.5
     ctx.beginPath()
@@ -72,16 +76,11 @@ function drawGrid(
     ctx.lineWidth = 1.5
 
     const majorEvery = 5
-    const majorFirstX =
-      Math.floor(firstX / (GRID_SIZE * majorEvery)) * GRID_SIZE * majorEvery
-    const majorFirstY =
-      Math.floor(firstY / (GRID_SIZE * majorEvery)) * GRID_SIZE * majorEvery
+    const majorStep = cellSize * majorEvery
+    const majorFirstX = Math.floor(firstX / majorStep) * majorStep
+    const majorFirstY = Math.floor(firstY / majorStep) * majorStep
 
-    for (
-      let wx = majorFirstX;
-      wx <= worldRight;
-      wx += GRID_SIZE * majorEvery
-    ) {
+    for (let wx = majorFirstX; wx <= worldRight; wx += majorStep) {
       const sx = panX + wx * zoom
       const pixelX = Math.round(sx) + 0.5
       ctx.beginPath()
@@ -90,11 +89,7 @@ function drawGrid(
       ctx.stroke()
     }
 
-    for (
-      let wy = majorFirstY;
-      wy <= worldBottom;
-      wy += GRID_SIZE * majorEvery
-    ) {
+    for (let wy = majorFirstY; wy <= worldBottom; wy += majorStep) {
       const sy = panY + wy * zoom
       const pixelY = Math.round(sy) + 0.5
       ctx.beginPath()
@@ -159,18 +154,19 @@ export default function InfiniteCanvas() {
     const { width, height } = getViewportSize()
     if (!width || !height) return
 
-    const bounds = nearbyBounds(myCell, NEARBY_RADIUS_CELLS)
+    const cellSize = displayCellSizeForZoom(cameraRef.current.zoom)
+    const bounds = nearbyBounds(myCell, NEARBY_RADIUS_CELLS, cellSize)
     updateCamera(cameraToFitBounds(bounds, width, height, MIN_ZOOM, MAX_ZOOM))
   }, [getViewportSize, myCell, updateCamera])
 
   const focusAll = useCallback(() => {
-    const cells = userBoxes.map((box) => ({
+    const points = userBoxes.map((box) => ({
       x: box.world_x,
       y: box.world_y,
     }))
-    if (myCell) cells.push(myCell)
+    if (myCell) points.push(myCell)
 
-    const bounds = boundsFromCells(cells, 2)
+    const bounds = boundsFromPoints(points)
     if (!bounds) return
 
     const { width, height } = getViewportSize()
@@ -351,7 +347,9 @@ export default function InfiniteCanvas() {
 
       if (e.button === 0 && user && geoStatus !== 'active') {
         const world = screenToWorld(e.clientX, e.clientY)
-        shareFromWorldPoint(world)
+        const cellSize = displayCellSizeForZoom(cameraRef.current.zoom)
+        const corner = snapToCellSize(world.x, world.y, cellSize)
+        shareFromWorldPoint(cellCenter(corner, cellSize))
       }
     },
     [geoStatus, screenToWorld, shareFromWorldPoint, user],
@@ -532,7 +530,9 @@ export default function InfiniteCanvas() {
           >
             Scroll to pan · Pinch or ⌘ scroll to zoom · Space + drag to pan
             {user && geoStatus === 'active' && ' · Your box follows GPS'}
-            {user && geoStatus === 'denied' && ' · Click a cell to claim your box'}
+            {user && geoStatus === 'denied' &&
+              ' · Click a cell to claim your box'}
+            {user && ' · Zoom in to see nearby users'}
           </div>
         )}
       </div>

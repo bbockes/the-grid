@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   cellKey,
-  latLngToWorld,
-  snapToCell,
+  latLngToWorldPrecise,
+  MICRO_CELL_SIZE,
   type WorldPoint,
 } from '../lib/grid'
 import { parseSocialLinks } from '../lib/profile'
@@ -110,24 +110,25 @@ export function useLocationSharing(userId: string | undefined) {
     sharingDisabledRef.current = false
   }, [])
 
-  const upsertCell = useCallback(
-    async (cell: WorldPoint, force = false) => {
+  const upsertLocation = useCallback(
+    async (point: WorldPoint, options: { force?: boolean } = {}) => {
       if (!supabase || !userId || sharingDisabledRef.current) return
 
-      const key = cellKey(cell.x, cell.y)
-      if (!force && lastCellKeyRef.current === key) return
+      const key = cellKey(point.x, point.y, MICRO_CELL_SIZE)
+      if (!options.force && lastCellKeyRef.current === key) return
       lastCellKeyRef.current = key
 
-      const { error } = await supabase.from('user_locations').upsert(
-        {
-          user_id: userId,
-          world_x: cell.x,
-          world_y: cell.y,
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' },
-      )
+      const row: Record<string, unknown> = {
+        user_id: userId,
+        world_x: point.x,
+        world_y: point.y,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }
+
+      const { error } = await supabase.from('user_locations').upsert(row, {
+        onConflict: 'user_id',
+      })
 
       if (error) {
         reportError(`upsert failed: ${error.message}`)
@@ -135,8 +136,8 @@ export function useLocationSharing(userId: string | undefined) {
       }
 
       clearError()
-      myCellRef.current = cell
-      setMyCell(cell)
+      myCellRef.current = point
+      setMyCell(point)
     },
     [clearError, reportError, userId],
   )
@@ -226,10 +227,11 @@ export function useLocationSharing(userId: string | undefined) {
       }[],
     ) => {
       const boxes: UserBox[] = locations.map((row) => ({
-        ...row,
-        world_x: snapToCell(Number(row.world_x), Number(row.world_y)).x,
-        world_y: snapToCell(Number(row.world_x), Number(row.world_y)).y,
+        user_id: row.user_id,
+        world_x: Number(row.world_x),
+        world_y: Number(row.world_y),
         is_active: isLocationActive(row),
+        updated_at: row.updated_at,
         display_name: 'User',
         avatar_url: null,
         description: null,
@@ -242,10 +244,10 @@ export function useLocationSharing(userId: string | undefined) {
 
       const mine = withNames.find((box) => box.isSelf)
       if (mine) {
-        const cell = { x: mine.world_x, y: mine.world_y }
-        myCellRef.current = cell
-        setMyCell(cell)
-        lastCellKeyRef.current = cellKey(mine.world_x, mine.world_y)
+        const point = { x: mine.world_x, y: mine.world_y }
+        myCellRef.current = point
+        setMyCell(point)
+        lastCellKeyRef.current = cellKey(mine.world_x, mine.world_y, MICRO_CELL_SIZE)
       }
     },
     [attachProfiles, userId],
@@ -284,17 +286,17 @@ export function useLocationSharing(userId: string | undefined) {
 
   const shareFromGeolocation = useCallback(
     (lat: number, lng: number) => {
-      const cell = latLngToWorld({ lat, lng })
-      void upsertCell(cell)
+      const point = latLngToWorldPrecise({ lat, lng })
+      void upsertLocation(point)
     },
-    [upsertCell],
+    [upsertLocation],
   )
 
   const shareFromWorldPoint = useCallback(
     (point: WorldPoint) => {
-      void upsertCell(snapToCell(point.x, point.y))
+      void upsertLocation(point, { force: true })
     },
-    [upsertCell],
+    [upsertLocation],
   )
 
   useEffect(() => {
@@ -347,7 +349,7 @@ export function useLocationSharing(userId: string | undefined) {
         sharingDisabledRef.current = false
         await syncAll()
         if (myCellRef.current) {
-          await upsertCell(myCellRef.current, true)
+          await upsertLocation(myCellRef.current, { force: true })
         }
       })()
     }
@@ -374,7 +376,7 @@ export function useLocationSharing(userId: string | undefined) {
     shareFromGeolocation,
     syncAll,
     touchPresence,
-    upsertCell,
+    upsertLocation,
     userId,
   ])
 

@@ -1,47 +1,102 @@
 export const GRID_SIZE = 300
 export const MIN_CELL_SCREEN_PX = 10
-export const MIN_ZOOM = MIN_CELL_SCREEN_PX / GRID_SIZE
 export const MAX_CELL_SCREEN_PX = 550
-export const MAX_ZOOM = MAX_CELL_SCREEN_PX / GRID_SIZE
 
-// Equirectangular world: 360° lng × 180° lat, one 300px cell per degree
+// 1° per macro cell at the global scale
+export const MACRO_CELL_SIZE = GRID_SIZE
+// ~11 m micro cells (~0.0001°)
+export const MICRO_CELL_DEGREES = 1e-4
+export const MICRO_CELL_SIZE = GRID_SIZE * MICRO_CELL_DEGREES
+
+export const MACRO_ZOOM_MAX = 0.25
+export const MICRO_ZOOM_MIN = 80
+
+export const MIN_ZOOM = MIN_CELL_SCREEN_PX / GRID_SIZE
+export const MAX_ZOOM = Math.max(
+  MAX_CELL_SCREEN_PX / GRID_SIZE,
+  MIN_CELL_SCREEN_PX / MICRO_CELL_SIZE,
+)
+
 export const WORLD_WIDTH = 360 * GRID_SIZE
 export const WORLD_HEIGHT = 180 * GRID_SIZE
 
 export type WorldPoint = { x: number; y: number }
 export type LatLng = { lat: number; lng: number }
 
-export function snapToCell(x: number, y: number): WorldPoint {
+export function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+export function latLngToWorldPrecise({ lat, lng }: LatLng): WorldPoint {
   return {
-    x: Math.floor(x / GRID_SIZE) * GRID_SIZE,
-    y: Math.floor(y / GRID_SIZE) * GRID_SIZE,
+    x: ((lng + 180) / 360) * WORLD_WIDTH,
+    y: ((90 - lat) / 180) * WORLD_HEIGHT,
   }
 }
 
-export function latLngToWorld({ lat, lng }: LatLng): WorldPoint {
-  const x = ((lng + 180) / 360) * WORLD_WIDTH
-  const y = ((90 - lat) / 180) * WORLD_HEIGHT
-  return snapToCell(x, y)
+/** @deprecated Use latLngToWorldPrecise — kept for compatibility */
+export function latLngToWorld(latLng: LatLng): WorldPoint {
+  return latLngToWorldPrecise(latLng)
 }
 
 export function worldToLatLng({ x, y }: WorldPoint): LatLng {
-  const cx = x + GRID_SIZE / 2
-  const cy = y + GRID_SIZE / 2
   return {
-    lng: (cx / WORLD_WIDTH) * 360 - 180,
-    lat: 90 - (cy / WORLD_HEIGHT) * 180,
+    lng: (x / WORLD_WIDTH) * 360 - 180,
+    lat: 90 - (y / WORLD_HEIGHT) * 180,
   }
 }
 
-export function cellKey(x: number, y: number) {
-  return `${x},${y}`
+export function snapToCellSize(
+  x: number,
+  y: number,
+  cellSize: number,
+): WorldPoint {
+  return {
+    x: Math.floor(x / cellSize) * cellSize,
+    y: Math.floor(y / cellSize) * cellSize,
+  }
 }
 
-function compareBoxDisplayPriority<T extends {
-  is_active: boolean
-  isSelf: boolean
-  updated_at: string
-}>(a: T, b: T) {
+/** @deprecated Use snapToCellSize(x, y, MACRO_CELL_SIZE) */
+export function snapToCell(x: number, y: number): WorldPoint {
+  return snapToCellSize(x, y, MACRO_CELL_SIZE)
+}
+
+export function displayCellSizeForZoom(zoom: number): number {
+  if (zoom <= MACRO_ZOOM_MAX) return MACRO_CELL_SIZE
+  if (zoom >= MICRO_ZOOM_MIN) return MICRO_CELL_SIZE
+
+  const t =
+    (zoom - MACRO_ZOOM_MAX) / (MICRO_ZOOM_MIN - MACRO_ZOOM_MAX)
+  const logMacro = Math.log(MACRO_CELL_SIZE)
+  const logMicro = Math.log(MICRO_CELL_SIZE)
+  return Math.exp(logMacro + t * (logMicro - logMacro))
+}
+
+/** Grid lines use a slightly coarser step when cells would be too dense on screen */
+export function gridLineCellSize(zoom: number): number {
+  let size = displayCellSizeForZoom(zoom)
+  const minScreenPx = 20
+
+  while (size * zoom < minScreenPx && size < MACRO_CELL_SIZE) {
+    size = Math.min(size * 5, MACRO_CELL_SIZE)
+  }
+
+  return size
+}
+
+export function cellKey(x: number, y: number, cellSize = MACRO_CELL_SIZE) {
+  const snapped = snapToCellSize(x, y, cellSize)
+  return `${snapped.x},${snapped.y},${cellSize}`
+}
+
+function compareBoxDisplayPriority<
+  T extends {
+    is_active: boolean
+    isSelf: boolean
+    updated_at: string
+  },
+>(a: T, b: T) {
   if (a.is_active !== b.is_active) return a.is_active ? -1 : 1
   if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1
   return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
@@ -55,11 +110,12 @@ export function pickVisibleBoxesPerCell<
     isSelf: boolean
     updated_at: string
   },
->(boxes: T[]): T[] {
+>(boxes: T[], cellSizeForBox: (box: T) => number): T[] {
   const byCell = new Map<string, T[]>()
 
   for (const box of boxes) {
-    const key = cellKey(box.world_x, box.world_y)
+    const cellSize = cellSizeForBox(box)
+    const key = cellKey(box.world_x, box.world_y, cellSize)
     const group = byCell.get(key)
     if (group) group.push(box)
     else byCell.set(key, [box])
@@ -69,6 +125,13 @@ export function pickVisibleBoxesPerCell<
     if (group.length === 1) return group[0]
     return [...group].sort(compareBoxDisplayPriority)[0]
   })
+}
+
+export function displayPosition(
+  point: WorldPoint,
+  cellSize: number,
+): WorldPoint {
+  return snapToCellSize(point.x, point.y, cellSize)
 }
 
 export function colorFromId(id: string): string {
@@ -87,22 +150,29 @@ export type Bounds = {
   maxY: number
 }
 
+export function boundsFromPoints(
+  points: WorldPoint[],
+  paddingWorld = MACRO_CELL_SIZE,
+): Bounds | null {
+  if (points.length === 0) return null
+
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
+
+  return {
+    minX: Math.min(...xs) - paddingWorld,
+    minY: Math.min(...ys) - paddingWorld,
+    maxX: Math.max(...xs) + paddingWorld,
+    maxY: Math.max(...ys) + paddingWorld,
+  }
+}
+
+/** @deprecated Use boundsFromPoints */
 export function boundsFromCells(
   cells: WorldPoint[],
   paddingCells = 1,
 ): Bounds | null {
-  if (cells.length === 0) return null
-
-  const pad = paddingCells * GRID_SIZE
-  const xs = cells.map((c) => c.x)
-  const ys = cells.map((c) => c.y)
-
-  return {
-    minX: Math.min(...xs) - pad,
-    minY: Math.min(...ys) - pad,
-    maxX: Math.max(...xs) + GRID_SIZE + pad,
-    maxY: Math.max(...ys) + GRID_SIZE + pad,
-  }
+  return boundsFromPoints(cells, paddingCells * MACRO_CELL_SIZE)
 }
 
 export function cameraToFitBounds(
@@ -133,12 +203,20 @@ export function cameraToFitBounds(
 export function nearbyBounds(
   center: WorldPoint,
   radiusCells: number,
+  cellSize = MACRO_CELL_SIZE,
 ): Bounds {
-  const radius = radiusCells * GRID_SIZE
+  const radius = radiusCells * cellSize
   return {
     minX: center.x - radius,
     minY: center.y - radius,
-    maxX: center.x + GRID_SIZE + radius,
-    maxY: center.y + GRID_SIZE + radius,
+    maxX: center.x + cellSize + radius,
+    maxY: center.y + cellSize + radius,
+  }
+}
+
+export function cellCenter(corner: WorldPoint, cellSize: number): WorldPoint {
+  return {
+    x: corner.x + cellSize / 2,
+    y: corner.y + cellSize / 2,
   }
 }
