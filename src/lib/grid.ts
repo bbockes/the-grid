@@ -37,6 +37,40 @@ export function cellKey(x: number, y: number) {
   return `${x},${y}`
 }
 
+function compareBoxDisplayPriority<T extends {
+  is_active: boolean
+  isSelf: boolean
+  updated_at: string
+}>(a: T, b: T) {
+  if (a.is_active !== b.is_active) return a.is_active ? -1 : 1
+  if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1
+  return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+}
+
+export function pickVisibleBoxesPerCell<
+  T extends {
+    world_x: number
+    world_y: number
+    is_active: boolean
+    isSelf: boolean
+    updated_at: string
+  },
+>(boxes: T[]): T[] {
+  const byCell = new Map<string, T[]>()
+
+  for (const box of boxes) {
+    const key = cellKey(box.world_x, box.world_y)
+    const group = byCell.get(key)
+    if (group) group.push(box)
+    else byCell.set(key, [box])
+  }
+
+  return [...byCell.values()].map((group) => {
+    if (group.length === 1) return group[0]
+    return [...group].sort(compareBoxDisplayPriority)[0]
+  })
+}
+
 export function colorFromId(id: string): string {
   let hash = 0
   for (let i = 0; i < id.length; i++) {

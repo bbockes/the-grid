@@ -5,9 +5,14 @@ import './UserProfileModal.css'
 type UserProfileModalProps = {
   box: UserBox
   onClose: () => void
+  onMessage?: (userId: string) => void
 }
 
-export default function UserProfileModal({ box, onClose }: UserProfileModalProps) {
+export default function UserProfileModal({
+  box,
+  onClose,
+  onMessage,
+}: UserProfileModalProps) {
   const initial = box.display_name.charAt(0).toUpperCase()
   const isAway = !box.is_active
   const description = box.description?.trim()
@@ -83,6 +88,18 @@ export default function UserProfileModal({ box, onClose }: UserProfileModalProps
                 ))}
               </ul>
             </section>
+          )}
+
+          {onMessage && !box.isSelf && (
+            <div className="user-profile-modal__actions">
+              <button
+                type="button"
+                className="user-profile-modal__message"
+                onClick={() => onMessage(box.user_id)}
+              >
+                Message
+              </button>
+            </div>
           )}
         </div>
       </div>

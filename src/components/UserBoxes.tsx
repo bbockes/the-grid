@@ -1,5 +1,5 @@
-import type { CSSProperties } from 'react'
-import { GRID_SIZE, MIN_CELL_SCREEN_PX, colorFromId } from '../lib/grid'
+import { useMemo, type CSSProperties } from 'react'
+import { GRID_SIZE, MIN_CELL_SCREEN_PX, colorFromId, pickVisibleBoxesPerCell } from '../lib/grid'
 import type { UserBox } from '../types/database'
 import './UserBoxes.css'
 
@@ -12,11 +12,13 @@ type UserBoxesProps = {
 }
 
 export default function UserBoxes({ boxes, camera, onBoxClick }: UserBoxesProps) {
-  if (boxes.length === 0) return null
+  const visibleBoxes = useMemo(() => pickVisibleBoxesPerCell(boxes), [boxes])
+
+  if (visibleBoxes.length === 0) return null
 
   return (
     <div className="user-boxes">
-      {boxes.map((box) => {
+      {visibleBoxes.map((box) => {
         const color = colorFromId(box.user_id)
         const sx = camera.x + box.world_x * camera.zoom
         const sy = camera.y + box.world_y * camera.zoom

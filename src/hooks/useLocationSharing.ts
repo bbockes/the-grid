@@ -10,6 +10,18 @@ import { supabase } from '../lib/supabase'
 import type { UserBox } from '../types/database'
 
 const POLL_INTERVAL_MS = 3_000
+const HEARTBEAT_INTERVAL_MS = 30_000
+const ACTIVE_STALE_MS = 90_000
+
+function isLocationActive(row: {
+  is_active?: boolean
+  updated_at: string
+}): boolean {
+  if (row.is_active === false) return false
+  const updatedAt = new Date(row.updated_at).getTime()
+  if (Number.isNaN(updatedAt)) return false
+  return Date.now() - updatedAt < ACTIVE_STALE_MS
+}
 
 function isSetupError(message: string) {
   const lower = message.toLowerCase()
@@ -129,6 +141,40 @@ export function useLocationSharing(userId: string | undefined) {
     [clearError, reportError, userId],
   )
 
+  const touchPresence = useCallback(async () => {
+    if (!supabase || !userId || sharingDisabledRef.current || !myCellRef.current) {
+      return
+    }
+
+    const cell = myCellRef.current
+    const { error } = await supabase.from('user_locations').upsert(
+      {
+        user_id: userId,
+        world_x: cell.x,
+        world_y: cell.y,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    )
+
+    if (error) {
+      reportError(`heartbeat failed: ${error.message}`)
+    }
+  }, [reportError, userId])
+
+  const setInactive = useCallback(async () => {
+    if (!supabase || !userId) return
+
+    await supabase
+      .from('user_locations')
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId)
+  }, [userId])
+
   const attachProfiles = useCallback(
     async (rows: UserBox[]): Promise<UserBox[]> => {
       if (!supabase || rows.length === 0) return rows
@@ -183,12 +229,12 @@ export function useLocationSharing(userId: string | undefined) {
         ...row,
         world_x: snapToCell(Number(row.world_x), Number(row.world_y)).x,
         world_y: snapToCell(Number(row.world_x), Number(row.world_y)).y,
-        is_active: row.is_active ?? true,
+        is_active: isLocationActive(row),
         display_name: 'User',
         avatar_url: null,
         description: null,
         social_links: [],
-        isSelf: row.user_id === userId && (row.is_active ?? true),
+        isSelf: row.user_id === userId,
       }))
 
       const withNames = await attachProfiles(boxes)
@@ -285,7 +331,11 @@ export function useLocationSharing(userId: string | undefined) {
     )
 
     const onVisible = () => {
-      if (document.visibilityState !== 'visible') return
+      if (document.visibilityState === 'hidden') {
+        void setInactive()
+        return
+      }
+
       void (async () => {
         if (!supabase || !userId) return
 
@@ -303,14 +353,30 @@ export function useLocationSharing(userId: string | undefined) {
     }
     document.addEventListener('visibilitychange', onVisible)
 
+    const heartbeatTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void touchPresence()
+      }
+    }, HEARTBEAT_INTERVAL_MS)
+
     return () => {
+      void setInactive()
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current)
         watchIdRef.current = null
       }
       document.removeEventListener('visibilitychange', onVisible)
+      clearInterval(heartbeatTimer)
     }
-  }, [checkConnection, shareFromGeolocation, syncAll, upsertCell, userId])
+  }, [
+    checkConnection,
+    setInactive,
+    shareFromGeolocation,
+    syncAll,
+    touchPresence,
+    upsertCell,
+    userId,
+  ])
 
   useEffect(() => {
     if (!supabase) return

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import AuthPanel from './AuthPanel'
+import MessengerPanel from './MessengerPanel'
 import UserBoxes from './UserBoxes'
 import UserProfileModal from './UserProfileModal'
 import { useAuth } from '../context/AuthContext'
 import { useLocationSharing } from '../hooks/useLocationSharing'
+import { useMessaging } from '../hooks/useMessaging'
 import {
   GRID_SIZE,
   MAX_ZOOM,
@@ -17,6 +19,7 @@ import {
 import './InfiniteCanvas.css'
 
 const NEARBY_RADIUS_CELLS = 4
+const SCROLL_PAN_SPEED = 2
 
 type Camera = { x: number; y: number; zoom: number }
 
@@ -114,6 +117,8 @@ export default function InfiniteCanvas() {
     shareFromWorldPoint,
     retryConnection,
   } = useLocationSharing(user?.id)
+
+  const messaging = useMessaging(user?.id)
 
   const viewportRef = useRef<HTMLDivElement>(null)
   const gridCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -295,8 +300,8 @@ export default function InfiniteCanvas() {
 
       updateCamera({
         ...cameraRef.current,
-        x: cameraRef.current.x - e.deltaX,
-        y: cameraRef.current.y - e.deltaY,
+        x: cameraRef.current.x - e.deltaX * SCROLL_PAN_SPEED,
+        y: cameraRef.current.y - e.deltaY * SCROLL_PAN_SPEED,
       })
     },
     [updateCamera, zoomAtPoint],
@@ -382,13 +387,8 @@ export default function InfiniteCanvas() {
   const myLatLng = myCell ? worldToLatLng(myCell) : null
   const activeBoxes = userBoxes.filter((box) => box.is_active)
   const ghostBoxes = userBoxes.filter((box) => !box.is_active)
-  const nearbyCount = myCell
-    ? activeBoxes.filter((box) => {
-        const dx = Math.abs(box.world_x - myCell.x) / GRID_SIZE
-        const dy = Math.abs(box.world_y - myCell.y) / GRID_SIZE
-        return dx <= NEARBY_RADIUS_CELLS && dy <= NEARBY_RADIUS_CELLS
-      }).length
-    : 0
+  const activeCount =
+    activeBoxes.filter((box) => !box.isSelf).length + (user ? 1 : 0)
 
   return (
     <div className="infinite-canvas-app">
@@ -413,7 +413,53 @@ export default function InfiniteCanvas() {
           <UserProfileModal
             box={viewedProfile}
             onClose={() => setViewedUserId(null)}
+            onMessage={(userId) => {
+              setViewedUserId(null)
+              void messaging.startConversationWith(userId)
+            }}
           />
+        )}
+
+        {user && (
+          <>
+            <MessengerPanel
+              open={messaging.panelOpen}
+              view={messaging.view}
+              conversations={messaging.conversations}
+              activeConversation={messaging.activeConversation}
+              messages={messaging.messages}
+              currentUserId={user.id}
+              loading={messaging.loading}
+              sending={messaging.sending}
+              error={messaging.error}
+              onClose={messaging.closePanel}
+              onBack={messaging.backToList}
+              onSelectConversation={(conversationId) => {
+                void messaging.openConversation(conversationId)
+              }}
+              onSendMessage={messaging.sendMessage}
+            />
+
+            {!messaging.panelOpen && (
+              <button
+                type="button"
+                className="messenger-fab"
+                aria-label="Open messages"
+                onClick={messaging.openPanel}
+              >
+                <svg
+                  className="messenger-fab__icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path
+                    fill="currentColor"
+                    d="M12 3C7.03 3 3 6.58 3 11c0 2.01.9 3.86 2.41 5.29L4 21l4.96-1.18A9.8 9.8 0 0 0 12 19c4.97 0 9-3.58 9-8s-4.03-8-9-8Z"
+                  />
+                </svg>
+              </button>
+            )}
+          </>
         )}
 
         <AuthPanel />
@@ -461,9 +507,8 @@ export default function InfiniteCanvas() {
               <>
                 <span className="hud-divider" />
                 <span>
-                  {activeBoxes.length} active
+                  {activeCount} active
                   {ghostBoxes.length > 0 && ` · ${ghostBoxes.length} away`}
-                  {myCell && ` · ${nearbyCount} nearby`}
                 </span>
               </>
             )}
@@ -476,11 +521,20 @@ export default function InfiniteCanvas() {
           </button>
         </div>
 
-        <div className="hint">
-          Scroll to pan · Pinch or ⌘ scroll to zoom · Space + drag to pan
-          {user && geoStatus === 'active' && ' · Your box follows GPS'}
-          {user && geoStatus === 'denied' && ' · Click a cell to claim your box'}
-        </div>
+        {!(user && messaging.panelOpen) && (
+          <div
+            className={[
+              'hint',
+              user && !messaging.panelOpen && 'hint--with-messenger',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            Scroll to pan · Pinch or ⌘ scroll to zoom · Space + drag to pan
+            {user && geoStatus === 'active' && ' · Your box follows GPS'}
+            {user && geoStatus === 'denied' && ' · Click a cell to claim your box'}
+          </div>
+        )}
       </div>
     </div>
   )

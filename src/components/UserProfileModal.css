@@ -170,3 +170,24 @@
 .user-profile-links__item:hover {
   background: #e7f3ff;
 }
+
+.user-profile-modal__actions {
+  margin-top: 4px;
+}
+
+.user-profile-modal__message {
+  width: 100%;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #0866ff;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.user-profile-modal__message:hover {
+  background: #005fe6;
+}
