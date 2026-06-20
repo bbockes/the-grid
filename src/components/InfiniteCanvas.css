@@ -83,6 +83,20 @@
   background: #fff;
 }
 
+.hud-button--active {
+  background: #0084ff;
+  border-color: #0084ff;
+  color: #fff;
+}
+
+.hud-button--active:hover {
+  background: #0073e6;
+}
+
+.hud-button--toggle {
+  margin-left: auto;
+}
+
 .setup-banner {
   position: absolute;
   top: 16px;
@@ -148,7 +162,6 @@
   right: 16px;
   left: auto;
   z-index: 10;
-  max-width: min(640px, calc(100vw - 104px));
   padding: 6px 12px;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(0, 0, 0, 0.08);
@@ -158,8 +171,5 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   backdrop-filter: blur(8px);
   text-align: right;
-}
-
-.hint--with-messenger {
-  max-width: min(640px, calc(100vw - 104px));
+  white-space: nowrap;
 }

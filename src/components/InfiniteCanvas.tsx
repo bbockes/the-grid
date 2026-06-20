@@ -127,16 +127,23 @@ export default function InfiniteCanvas() {
   const [isPanning, setIsPanning] = useState(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
   const [viewedUserId, setViewedUserId] = useState<string | null>(null)
+  const [showInactiveUsers, setShowInactiveUsers] = useState(true)
 
   const viewedProfile = viewedUserId
     ? (userBoxes.find((box) => box.user_id === viewedUserId) ?? null)
     : null
 
   useEffect(() => {
-    if (viewedUserId && !userBoxes.some((box) => box.user_id === viewedUserId)) {
+    if (!viewedUserId) return
+
+    const visible = userBoxes.filter(
+      (box) => box.isSelf || box.is_active || showInactiveUsers,
+    )
+
+    if (!visible.some((box) => box.user_id === viewedUserId)) {
       setViewedUserId(null)
     }
-  }, [userBoxes, viewedUserId])
+  }, [showInactiveUsers, userBoxes, viewedUserId])
 
   const updateCamera = useCallback((next: Camera) => {
     cameraRef.current = next
@@ -388,6 +395,10 @@ export default function InfiniteCanvas() {
   const activeCount =
     activeBoxes.filter((box) => !box.isSelf).length + (user ? 1 : 0)
 
+  const displayedBoxes = userBoxes.filter(
+    (box) => box.isSelf || box.is_active || showInactiveUsers,
+  )
+
   return (
     <div className="infinite-canvas-app">
       <div
@@ -402,7 +413,7 @@ export default function InfiniteCanvas() {
         <canvas ref={gridCanvasRef} className="grid-canvas" aria-hidden />
 
         <UserBoxes
-          boxes={userBoxes}
+          boxes={displayedBoxes}
           camera={camera}
           onBoxClick={(box) => setViewedUserId(box.user_id)}
         />
@@ -517,17 +528,22 @@ export default function InfiniteCanvas() {
           <button type="button" className="hud-button" onClick={focusAll}>
             Show all
           </button>
+          {user && (
+            <button
+              type="button"
+              className={`hud-button hud-button--toggle${showInactiveUsers ? ' hud-button--active' : ''}`}
+              aria-pressed={showInactiveUsers}
+              onClick={() => setShowInactiveUsers((on) => !on)}
+            >
+              {showInactiveUsers
+                ? 'Hide inactive users'
+                : 'Show inactive users'}
+            </button>
+          )}
         </div>
 
         {!(user && messaging.panelOpen) && (
-          <div
-            className={[
-              'hint',
-              user && !messaging.panelOpen && 'hint--with-messenger',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
+          <div className="hint">
             Scroll to pan · Pinch or ⌘ scroll to zoom · Space + drag to pan
             {user && geoStatus === 'active' && ' · Your box follows GPS'}
             {user && geoStatus === 'denied' &&
