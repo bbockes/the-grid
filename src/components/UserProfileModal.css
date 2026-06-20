@@ -164,6 +164,7 @@
   font-weight: 600;
   text-decoration: none;
   transition: background 0.15s;
+  overflow-wrap: anywhere;
 }
 
 .user-profile-links__item:hover {

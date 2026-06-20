@@ -13,14 +13,25 @@ export function normalizeSocialLink(url: string): string | null {
 
   const withProtocol = /^https?:\/\//i.test(trimmed)
     ? trimmed
-    : `https://${trimmed}`
+    : `https://${trimmed.replace(/^\/\//, '')}`
 
   try {
     const parsed = new URL(withProtocol)
     if (!['http:', 'https:'].includes(parsed.protocol)) return null
-    return parsed.toString()
+    if (!parsed.hostname.includes('.')) return null
+    return parsed.toString().replace(/\/$/, '')
   } catch {
     return null
+  }
+}
+
+export function formatSocialLinkDisplay(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const path = parsed.pathname === '/' ? '' : parsed.pathname
+    return `${parsed.hostname.replace(/^www\./, '')}${path}${parsed.search}${parsed.hash}`
+  } catch {
+    return url
   }
 }
 

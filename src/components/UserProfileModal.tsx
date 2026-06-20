@@ -1,17 +1,10 @@
+import { formatSocialLinkDisplay } from '../lib/profile'
 import type { UserBox } from '../types/database'
 import './UserProfileModal.css'
 
 type UserProfileModalProps = {
   box: UserBox
   onClose: () => void
-}
-
-function linkLabel(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return url
-  }
 }
 
 export default function UserProfileModal({ box, onClose }: UserProfileModalProps) {
@@ -84,7 +77,7 @@ export default function UserProfileModal({ box, onClose }: UserProfileModalProps
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      {linkLabel(url)}
+                      {formatSocialLinkDisplay(url)}
                     </a>
                   </li>
                 ))}

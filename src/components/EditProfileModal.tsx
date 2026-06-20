@@ -248,6 +248,7 @@ export default function EditProfileModal({
               <h3 className="edit-profile-section__title">Social links</h3>
               <p className="edit-profile-section__subtitle">
                 Add up to {MAX_SOCIAL_LINKS} links to your profiles and websites.
+                https:// is optional.
               </p>
               <div className="edit-profile-links">
                 {socialLinks.map((link, index) => (
@@ -257,10 +258,11 @@ export default function EditProfileModal({
                     </span>
                     <input
                       className="edit-profile-field__input"
-                      type="url"
+                      type="text"
+                      inputMode="url"
                       value={link}
                       onChange={(e) => updateLink(index, e.target.value)}
-                      placeholder="https://instagram.com/you"
+                      placeholder="instagram.com/you"
                     />
                   </label>
                 ))}

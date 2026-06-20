@@ -12,11 +12,44 @@ import type { UserBox } from '../types/database'
 const POLL_INTERVAL_MS = 3_000
 
 function isSetupError(message: string) {
+  const lower = message.toLowerCase()
+  if (
+    lower.includes('failed to fetch') ||
+    lower.includes('networkerror') ||
+    lower.includes('jwt') ||
+    lower.includes('row-level security') ||
+    lower.includes('permission denied') ||
+    lower.includes('not authorized')
+  ) {
+    return false
+  }
   return (
-    message.includes('user_locations') ||
-    message.includes('schema cache') ||
-    message.includes('does not exist')
+    lower.includes('does not exist') ||
+    lower.includes('schema cache') ||
+    lower.includes('could not find the table')
   )
+}
+
+function isTransientError(message: string) {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('failed to fetch') ||
+    lower.includes('networkerror') ||
+    lower.includes('jwt') ||
+    lower.includes('timeout')
+  )
+}
+
+export function getSetupHint(message: string): string {
+  const columnMatch = message.match(
+    /Could not find the '([^']+)' column of '([^']+)'/i,
+  )
+  if (columnMatch) {
+    const [, column, table] = columnMatch
+    return `Your database is missing the ${column} column on ${table}. Open Supabase → SQL Editor, run supabase/setup.sql (safe to re-run), or run supabase/migrations/003_is_active.sql. Then refresh this page.`
+  }
+
+  return `The user_locations table is missing or incomplete. Open Supabase → SQL Editor, paste the contents of supabase/setup.sql, and click Run. Then refresh this page.`
 }
 
 export function useLocationSharing(userId: string | undefined) {
@@ -45,6 +78,10 @@ export function useLocationSharing(userId: string | undefined) {
   const myCellRef = useRef<WorldPoint | null>(null)
 
   const reportError = useCallback((message: string) => {
+    if (isTransientError(message)) {
+      console.warn('[location]', message)
+      return
+    }
     setSyncError(message)
     if (loggedErrorRef.current !== message) {
       loggedErrorRef.current = message
@@ -249,10 +286,20 @@ export function useLocationSharing(userId: string | undefined) {
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
-      void syncAll()
-      if (myCellRef.current) {
-        void upsertCell(myCellRef.current, true)
-      }
+      void (async () => {
+        if (!supabase || !userId) return
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (!session) return
+
+        sharingDisabledRef.current = false
+        await syncAll()
+        if (myCellRef.current) {
+          await upsertCell(myCellRef.current, true)
+        }
+      })()
     }
     document.addEventListener('visibilitychange', onVisible)
 
@@ -298,6 +345,7 @@ export function useLocationSharing(userId: string | undefined) {
   return {
     syncError,
     needsSetup,
+    setupHint: syncError ? getSetupHint(syncError) : null,
     userBoxes,
     myCell,
     geoStatus,

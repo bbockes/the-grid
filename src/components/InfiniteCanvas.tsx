@@ -107,6 +107,7 @@ export default function InfiniteCanvas() {
   const {
     syncError,
     needsSetup,
+    setupHint,
     userBoxes,
     myCell,
     geoStatus,
@@ -417,15 +418,10 @@ export default function InfiniteCanvas() {
 
         <AuthPanel />
 
-        {user && needsSetup && (
+        {user && needsSetup && setupHint && (
           <div className="setup-banner">
             <p className="setup-banner__title">Database setup required</p>
-            <p className="setup-banner__copy">
-              The <code>user_locations</code> table is missing. Open Supabase →
-              SQL Editor, paste the contents of{' '}
-              <code>supabase/setup.sql</code>, and click Run. Then refresh this
-              page.
-            </p>
+            <p className="setup-banner__copy">{setupHint}</p>
             <button
               type="button"
               className="setup-banner__button"

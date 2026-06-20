@@ -11,6 +11,7 @@ create table public.user_locations (
   user_id uuid references auth.users on delete cascade primary key,
   world_x double precision not null,
   world_y double precision not null,
+  is_active boolean not null default true,
   updated_at timestamptz not null default now()
 );
 

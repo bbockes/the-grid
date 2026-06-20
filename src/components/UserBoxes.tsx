@@ -42,6 +42,7 @@ export default function UserBoxes({ boxes, camera, onBoxClick }: UserBoxesProps)
                 width: size,
                 height: size,
                 '--box-color': color,
+                '--box-size': `${size}px`,
               } as CSSProperties
             }
             aria-label={`View ${box.display_name}'s profile`}
